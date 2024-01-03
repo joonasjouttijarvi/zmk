@@ -11,37 +11,58 @@ import Metadata from "@site/src/data/hardware-metadata.json";
 
 ## Overview
 
-This guide will walk through the steps necessary to add ZMK support for a keyboard the uses a (Pro Micro compatible) addon MCU board to provide the microprocessor.
+This guide will walk through the steps necessary to add ZMK support for a keyboard that uses an add-on MCU board (e.g. Pro Micro compatible) to provide the microprocessor.
+
 The high level steps are:
 
+- From a template, create a new [Zephyr module](https://docs.zephyrproject.org/3.2.0/develop/modules.html) housed in a git repository containing one or more custom shields.
 - Create a new shield directory.
 - Add the base Kconfig files.
 - Add the shield overlay file to define the KSCAN driver for detecting key press/release.
 - (Optional) Add the matrix transform for mapping KSCAN row/column values to sane key positions. This is needed for non-rectangular keyboards, or where the underlying row/column pin arrangement does not map one to one with logical locations on the keyboard.
 - Add a default keymap, which users can override in their own configs as needed.
+- Add a `<my_shield>.zmk.yml` metadata file to document the high level details of your shield, and the features it supports.
+- Update the `build.yaml` file from the repository template to have some sample builds of the firmware to test.
 - Add support for features such as encoders, OLED displays, or RGB underglow.
 
-It may be helpful to review the upstream [shields documentation](https://docs.zephyrproject.org/2.5.0/guides/porting/shields.html#shields) to get a proper understanding of the underlying system before continuing.
+It may be helpful to review the upstream [shields documentation](https://docs.zephyrproject.org/3.2.0/guides/porting/shields.html#shields) to get a proper understanding of the underlying system before continuing.
 
 :::note
 ZMK support for split keyboards requires a few more files than single boards to ensure proper connectivity between the central and peripheral units. Check the following guides thoroughly to ensure that all the files are in place.
 :::
 
+## New Zephyr Module Repository
+
+The first step to creating the shield is to create a new Zephyr module repository from a template.
+
+:::note
+This guide assumes you already have a configured GitHub account. If you don't yet have one, go ahead and [sign up](https://github.com/join) before continuing.
+:::
+
+Follow these steps to create your new repository:
+
+- Visit https://github.com/zmkfirmware/unified-zmk-config-template
+- Click the green "Use this template" button
+- In the drop down that opens, click "Use this template".
+- In the following screen, provide the following information:
+  - A repository name, e.g. `my-shield-module`.
+  - A brief description, e.g. `ZMK Support For MyShield Keyboard`.
+  - Select Public or Private, depending on your preference.
+- Click the green "Create repository" button
+
 ## New Shield Directory
 
 :::note
-This guide describes how to add shield to the ZMK main repository. If you are building firmware for your
-own prototype or handwired keyboard, it is recommended to use your own user config repository. Follow the
-[user setup guide](user-setup.md) to create your user config repository first. When following the rest
-of this guide, replace the `app/` directory in the ZMK main repository with the `config/` directory in your
-user config repository. For example, `app/boards/shields/<keyboard_name>` should now be
-`config/boards/shields/<keyboard_name>`.
+This guide describes how to add a shield to an independently managed Zephyr module repository. This is the
+preferred way to handle boards and shields moving forward in ZMK, although the tooling to make this easier
+for users is still improving. ZMK does have a collection of boards/shields in the ZMK main repository, which are planned to be phased out, but until that is complete, there _may_ be a few select scenarios where adding your keyboard to ZMK itself is preferred. Due the volume of PRs and the focus of ZMK development not being merging of keyboard PRs, you are highly encouraged to use an out-of-tree Zephyr module repository to manage your definitions. Should you choose to try to get your keyboard included in ZMK main repository, the paths in the rest of the guide would be nested under the `app/` folder there instead. For example, `boards/shields/<keyboard_name>` should now be
+`app/boards/shields/<keyboard_name>`.
 :::
 
-Shields for Zephyr applications go into the `boards/shields/` directory; since ZMK's Zephyr application lives in the `app/` subdirectory of the repository, that means the new shield directory should be:
+Shields in Zephyr module "board root" go into the `boards/shields/` directory; that means the new shield directory in your module repository should be:
 
 ```bash
-mkdir app/boards/shields/<keyboard_name>
+mkdir boards/shields/<keyboard_name>
 ```
 
 ## Base Kconfig Files
@@ -53,7 +74,7 @@ shield to get it picked up for ZMK, `Kconfig.shield` and `Kconfig.defconfig`.
 
 The `Kconfig.shield` file defines any additional Kconfig settings that may be relevant when using this keyboard. For most keyboards, there is just one additional configuration value for the shield itself.
 
-```
+```kconfig
 config SHIELD_MY_BOARD
     def_bool $(shields_list_contains,my_board)
 ```
@@ -62,7 +83,7 @@ This will make sure that a new configuration value named `SHIELD_MY_BOARD` is se
 
 **For split boards**, you will need to add configurations for the left and right sides. For example, if your split halves are named `my_board_left` and `my_board_right`, it would look like this:
 
-```
+```kconfig
 config SHIELD_MY_BOARD_LEFT
     def_bool $(shields_list_contains,my_board_left)
 
@@ -83,7 +104,7 @@ The updated new default values should always be wrapped inside a conditional on 
 The keyboard name must be less than or equal to 16 characters in length, otherwise the bluetooth advertising might fail and you will not be able to find your keyboard from your device.
 :::
 
-```
+```kconfig
 if SHIELD_MY_BOARD
 
 config ZMK_KEYBOARD_NAME
@@ -92,12 +113,13 @@ config ZMK_KEYBOARD_NAME
 endif
 ```
 
-Similarly to defining the halves of a split board in `Kconfig.shield` it is important to set the `ZMK_KEYBOARD_NAME` for each half of a split keyboard.
-You'll also want to set which half is the central side. Most boards set it to the left.
-Then on the peripheral half, you'll want to turn USB on so that it shows USB status on displays properly.
-Finally, you'll want to turn on the split option for both sides. This can all be seen below.
+For split keyboards, `Kconfig.defconfig` needs to specify a few more options.
+Which side is central (usually the left) is determined via the configuration in this file.
+For that side, the keyboard name is assigned and the central config is set.
+The peripheral side is typically not assigned a name since only the central will be advertising for connections to other devices.
+Finally, the split config needs to be set for both sides:
 
-```
+```kconfig
 if SHIELD_MY_BOARD_LEFT
 
 config ZMK_KEYBOARD_NAME
@@ -120,6 +142,10 @@ endif
 
 <InterconnectTabs items={Metadata}/>
 
+To use GPIO pins that are not part of the interconnects as described above, you can use the GPIO labels that are specific to each controller type.
+For instance, pins numbered `PX.Y` in nRF52840-based boards can be referred to via `&gpioX Y` labels.
+An example is `&gpio1 7` for the `P1.07` pin that the nice!nano exposes in the middle of the board.
+
 <Tabs
 defaultValue="unibody"
 values={[
@@ -132,7 +158,7 @@ values={[
 The `<shield_name>.overlay` is the devicetree description of the keyboard shield that is merged with the primary board devicetree description before the build. For ZMK, this file at a minimum should include the chosen node named `zmk,kscan` that references a KSCAN driver instance. For a simple 3x3 macropad matrix,
 this might look something like:
 
-```
+```dts
 / {
     chosen {
         zmk,kscan = &kscan0;
@@ -140,7 +166,6 @@ this might look something like:
 
     kscan0: kscan_0 {
         compatible = "zmk,kscan-gpio-matrix";
-        label = "KSCAN";
         diode-direction = "col2row";
 
         col-gpios
@@ -170,7 +195,7 @@ Unlike unibody keyboards, split keyboards have a core .dtsi file with shield ove
 It is preferred to define only the `col-gpios` or `row-gpios` in the common shield .dtsi, depending on the `diode-direction` value.
 For `col2row` directed boards like the iris, the shared .dtsi file may look like this:
 
-```
+```dts
 #include <dt-bindings/zmk/matrix_transform.h>
 
 / {
@@ -199,7 +224,6 @@ RC(3,0) RC(3,1) RC(3,2) RC(3,3) RC(3,4) RC(3,5) RC(4,2) RC(4,9) RC(3,6) RC(3,7) 
 
     kscan0: kscan {
         compatible = "zmk,kscan-gpio-matrix";
-        label = "KSCAN";
 
         diode-direction = "col2row";
         row-gpios
@@ -224,9 +248,7 @@ Furthermore, the column offset for the [matrix transform](#optional-matrix-trans
 because the keyboard's switch matrix is read from left to right, top to bottom.
 This is exemplified with the iris .overlay files.
 
-```
-// iris_left.overlay
-
+```dts title=iris_left.overlay
 #include "iris.dtsi" // Notice that the main dtsi files are included in the overlay.
 
 &kscan0 {
@@ -241,9 +263,7 @@ This is exemplified with the iris .overlay files.
 };
 ```
 
-```
-// iris_right.overlay
-
+```dts title=iris_right.overlay
 #include "iris.dtsi"
 
 &default_transform { // The matrix transform for this board is 6 columns over because the left half is 6 columns wide according to the matrix.
@@ -277,9 +297,7 @@ For example, a split board called `my_awesome_split_board` would have the follow
 
 In most case you'll only need to use the .conf file that affects both halves of a split board. It's used for adding features like deep-sleep or rotary encoders.
 
-```
-// my_awesome_split_board.conf
-
+```ini title=my_awesome_split_board.conf
 CONFIG_ZMK_SLEEP=y
 ```
 
@@ -302,7 +320,7 @@ the logical key location as perceived by the end user. All _keymap_ mappings act
 
 _Without_ a matrix transform, that intentionally map each key position to the row/column pair that position corresponds to, the default equation to determine that is:
 
-```
+```c
 ($row * NUMBER_OF_COLUMNS) + $column
 ```
 
@@ -312,7 +330,7 @@ Whenever that default key position mapping is insufficient, the `<shield_name>.o
 
 Here is an example for the [nice60](https://github.com/Nicell/nice60), which uses an efficient 8x8 GPIO matrix, and uses a transform:
 
-```
+```dts
 #include <dt-bindings/zmk/matrix_transform.h>
 
 / {
@@ -350,9 +368,9 @@ See the [matrix transform section](../config/kscan.md#matrix-transform) in the K
 
 ## Default Keymap
 
-Each keyboard should provide an OOTB default keymap to be used when building the firmware, which can be overridden and customized by user configs. For "shield keyboards", this should be placed in the `app/boards/shields/<shield_name>/<shield_name>.keymap` file. The keymap is configured as an additional devicetree overlay that includes the following:
+Each keyboard should provide a default keymap to be used when building the firmware, which can be overridden and customized by user configs. For "shield keyboards", this should be placed in the `boards/shields/<shield_name>/<shield_name>.keymap` file. The keymap is configured as an additional devicetree overlay that includes the following:
 
-- A node with `compatible="zmk,keymap"` where each child node is a layer with a `bindings` array that binds each key position to a given behavior (e.g. key press, momentarily layer, etc).
+- A node with `compatible = "zmk,keymap"` where each child node is a layer with a `bindings` array that binds each key position to a given behavior (e.g. key press, momentary layer, etc).
 
 Here is an example simple keymap for the Kyria, with only one layer:
 
@@ -364,12 +382,7 @@ The two `#include` lines at the top of the keymap are required in order to bring
 
 ### Keymap Behaviors
 
-Further documentation on behaviors and bindings is forthcoming, but a summary of the current behaviors you can bind to key positions is as follows:
-
-- `kp` is the "key press" behavior, and takes a single binding argument of the key code from the 'keyboard/keypad" HID usage table.
-- `mo` is the "momentary layer" behavior, and takes a single binding argument of the numeric ID of the layer to momentarily enable when that key is held.
-- `trans` is the "transparent" behavior, useful to be place in higher layers above `mo` bindings to be sure the key release is handled by the lower layer. No binding arguments are required.
-- `mt` is the "mod-tap" behavior, and takes two binding arguments, the modifier to use if held, and the keycode to send if tapped.
+For the full documentation on the available behaviors for use in keymaps, start with reviewing [`kp`](../behaviors/key-press.md) and then use the sidebar to review the others available within ZMK.
 
 ## Metadata
 
@@ -397,6 +410,40 @@ siblings:
 
 You should place a properly named `foo.zmk.yml` file in the directory next to your other shield values, and fill it out completely and accurately. See [Hardware Metadata Files](/docs/development/hardware-metadata-files) for the full details.
 
+## Build File
+
+To help you test/verify your firmware, update the `build.yaml` to list your particular board/shield combinations you want built whenever changes are published to GitHub. Open `build.yaml` with your editor and add a combination, e.g.:
+
+```yaml
+# This file generates the GitHub Actions matrix
+# For simple board + shield combinations, add them
+# to the top level board and shield arrays, for more
+# control, add individual board + shield combinations to
+# the `include` property, e.g:
+#
+# board: [ "nice_nano_v2" ]
+# shield: [ "corne_left", "corne_right" ]
+# include:
+#   - board: bdn9_rev2
+#   - board: nice_nano_v2
+#     shield: reviung41
+#
+---
+include:
+  - board: nice_nano_v2
+    shield: <my_shield>
+```
+
+For split keyboards, you will need to specify the halves/siblings separately, e.g.:
+
+```yaml
+include:
+  - board: mikoto_520
+    shield: <my_shield>_left
+  - board: mikoto_520
+    shield: <my_shield>_right
+```
+
 ## Adding Features
 
 ### Encoders
@@ -415,7 +462,7 @@ values={[
 
 In your configuration file you will need to add the following lines so that the encoders can be enabled/disabled:
 
-```
+```ini
 # Uncomment to enable encoder
 # CONFIG_EC11=y
 # CONFIG_EC11_TRIGGER_GLOBAL_THREAD=y
@@ -431,37 +478,41 @@ If building locally for split boards, you may need to add these lines to the spe
 <TabItem value = "dtsi">
 In your device tree file you will need to add the following lines to define the encoder sensor:
 
-```
-left_encoder: encoder_left {
+```dts
+    left_encoder: encoder_left {
         compatible = "alps,ec11";
-        label = "LEFT_ENCODER";
         a-gpios = <PIN_A (GPIO_ACTIVE_HIGH | GPIO_PULL_UP)>;
         b-gpios = <PIN_B (GPIO_ACTIVE_HIGH | GPIO_PULL_UP)>;
-        resolution = <4>;
+        steps = <80>;
         status = "disabled";
     };
 ```
 
-Here you will have to replace PIN_A and PIN_B with the appropriate pins that your PCB utilizes for the encoder(s). For keyboards that use the Pro Micro or any of the Pro Micro replacements, Sparkfun's [Pro Micro Hookup Guide](https://learn.sparkfun.com/tutorials/pro-micro--fio-v3-hookup-guide/hardware-overview-pro-micro) has a pinout diagram that can be useful to determine the right pins. Reference either the blue numbers labeled "Arduino" (digital pins) or the green numbers labeled "Analog" (analog pins). For pins that are labeled as both digital and analog, refer to your specific board's .dtsi file to determine how you should refer to that pin.
+Here you need to replace `PIN_A` and `PIN_B` with the appropriate pins that your PCB utilizes for the encoder(s). See [shield overlays section above](#shield-overlays) on the appropriate node label and pin number to use for GPIOs.
+
+The `steps` property should corresponded to the documented pulses per rotation for the encoders used on the keyboard, typically found on the datasheet of the component. If users use different encoders when they build, the value can be overridden in their keymap.
 
 Add additional encoders as necessary by duplicating the above lines, replacing `left` with whatever you would like to call your encoder, and updating the pins. Note that support for peripheral (right) side sensors over BLE is still in progress.
 
 Once you have defined the encoder sensors, you will have to add them to the list of sensors:
 
-```
-sensors {
+```dts
+    sensors: sensors {
         compatible = "zmk,keymap-sensors";
         sensors = <&left_encoder &right_encoder>;
+        triggers-per-rotation = <20>;
     };
 ```
 
 In this example, a left_encoder and right_encoder are both added. Additional encoders can be added with spaces separating each, and the order they are added here determines the order in which you define their behavior in your keymap.
 
+In addition, a default value for the number of times the sensors trigger the bound behavior per full rotation is set via the `triggers-per-rotation` property. See [Encoders Config](../config/encoders.md#devicetree) for more details.
+
 </TabItem>
 <TabItem value = "overlay">
 Add the following lines to your overlay file(s) to enable the encoder:
 
-```
+```dts
 &left_encoder {
     status = "okay";
 };
@@ -475,7 +526,7 @@ For split keyboards, make sure to add left hand encoders to the left .overlay fi
 <TabItem value = "keymap">
 Add the following line to your keymap file to add default encoder behavior bindings:
 
-```
+```dts
 sensor-bindings = <&inc_dec_kp C_VOL_UP C_VOL_DN>;
 ```
 
@@ -486,23 +537,46 @@ Add additional bindings as necessary to match the default number of encoders on 
 
 ## Testing
 
+### GitHub Actions
+
+Using GitHub Actions to build your new firmware can save you from doing any local [development setup](./setup.md),
+at the expense of a longer feedback loop if there are issues. To push your changes and trigger a build:
+
+- Add all your pending changes with `git add .`
+- Commit your changes with `git commit -m "Initial shield"`
+- Push the changes to GitHub with `git push`
+
+Once pushed, click on the "Actions" tab of the repo you created in the first step, and you should see a new build running. If the build is successful, there will be a new `firmware.zip` artifact shown on the summary screen you can download that will contain the new `.uf2` files that can be flashed to the device.
+
+### Local Build
+
+:::note
+To build locally, be sure you've followed the [development setup](./setup.md) guide first.
+:::
+
 Once you've fully created the new keyboard shield definition,
 you should be able to test with a build command like:
 
-```
-west build --pristine -b proton_c -- -DSHIELD=my_board
+```sh
+west build --pristine -b nice_nano_v2 -- -DSHIELD=<my_shield> -DZMK_EXTRA_MODULES=/full/path/to/your/module
+# replace <my_shield> with e.g. <my_shield>_left for split keyboards, then repeat for <my_shield>_right
 ```
 
-The above build command generates `build/zephyr/zmk.uf2`. If your board
+The above build command generates a `build/zephyr/zmk.uf2` file that you can flash using the steps from the following section. See the dedicated [building and flashing page](build-flash.md) for more details.
+
+### Flashing
+
+If your board
 supports USB Flashing Format (UF2), copy that file onto the root of the USB mass
 storage device for your board. The controller should flash your built firmware
-and automatically restart once flashing is complete.
+and automatically restart once flashing is complete. If you need to flash an updated
+UF2 file with fixes, you can re-enter the bootloader by double tapping the reset button.
 
 Alternatively, if your board supports flashing and you're not developing from
 within a Dockerized environment, enable Device Firmware Upgrade (DFU) mode on
 your board and run the following command to test your build:
 
-```
+```sh
 west flash
 ```
 

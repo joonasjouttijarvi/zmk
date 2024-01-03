@@ -65,7 +65,7 @@ west build -b planck_rev6
 When building for a new board and/or shield after having built one previously, you may need to enable the pristine build option. This option removes all existing files in the build directory before regenerating them, and can be enabled by adding either --pristine or -p to the command:
 
 ```sh
-west build -p -b proton_c -- -DSHIELD=kyria_left
+west build -p -b nice_nano_v2 -- -DSHIELD=kyria_left
 ```
 
 ### Building For Split Keyboards
@@ -76,14 +76,14 @@ For split keyboards, you will have to build and flash each side separately the f
 
 By default, the `build` command outputs a single .uf2 file named `zmk.uf2` so building left and then right immediately after will overwrite your left firmware. In addition, you will need to pristine build each side to ensure the correct files are used. To avoid having to pristine build every time and separate the left and right build files, we recommend setting up separate build directories for each half. You can do this by using the `-d` parameter and first building left into `build/left`:
 
-```
-west build -d build/left -b nice_nano -- -DSHIELD=kyria_left
+```sh
+west build -d build/left -b nice_nano_v2 -- -DSHIELD=kyria_left
 ```
 
 and then building right into `build/right`:
 
-```
-west build -d build/right -b nice_nano -- -DSHIELD=kyria_right
+```sh
+west build -d build/right -b nice_nano_v2 -- -DSHIELD=kyria_right
 ```
 
 This produces `left` and `right` subfolders under the `build` directory and two separate .uf2 files. For future work on a specific half, use the `-d` parameter again to ensure you are building into the correct location.
@@ -92,6 +92,22 @@ This produces `left` and `right` subfolders under the `build` directory and two 
 Build times can be significantly reduced after the initial build by omitting all build arguments except the build directory, e.g. `west build -d build/left`. The additional options and intermediate build outputs from your initial build are cached and reused for unchanged files.
 :::
 
+### Building with external modules
+
+ZMK supports loading additional boards, shields, code, etc. from [external Zephyr modules](https://docs.zephyrproject.org/3.2.0/develop/modules.html), facilitating out-of-tree management and versioning independent of the ZMK repository. To build with any additional modules, use the `ZMK_EXTRA_MODULES` define added to your `west build` command.
+
+For instance, building with the `my-vendor-keebs-module` checked out to your documents directory, you would build like:
+
+```
+west build -b nice_nano_v2 -- -DSHIELD=vendor_shield -DZMK_EXTRA_MODULES="C:/Users/myUser/Documents/my-vendor-keebs-module"
+```
+
+When adding multiple modules, make sure they are separated by a semicolon, e.g.:
+
+```
+west build -b nice_nano_v2 -- -DSHIELD=vendor_shield -DZMK_EXTRA_MODULES="C:/Users/myUser/Documents/my-vendor-keebs-module;C:/Users/myUser/Documents/my-other-keebs-module"
+```
+
 ### Building from `zmk-config` Folder
 
 Instead of building .uf2 files using the default keymap and config files, you can build directly from your [`zmk-config` folder](../user-setup.md#github-repo) by adding
@@ -99,7 +115,7 @@ Instead of building .uf2 files using the default keymap and config files, you ca
 
 For instance, building kyria firmware from a user `myUser`'s `zmk-config` folder on Windows 10 may look something like this:
 
-```
+```sh
 west build -b nice_nano -- -DSHIELD=kyria_left -DZMK_CONFIG="C:/Users/myUser/Documents/Github/zmk-config/config"
 ```
 
@@ -117,7 +133,7 @@ volume automatically -- we need to delete the default volume before binding it t
 
 Then you can bind the `zmk-config` volume to the correct path pointing to your local [zmk-config](customization.md) folder:
 
-```
+```sh
 docker volume create --driver local -o o=bind -o type=none -o \
     device="/full/path/to/your/zmk-config/" zmk-config
 ```
@@ -130,14 +146,14 @@ The above build commands generate a UF2 file in `build/zephyr` (or
 `build/left|right/zephyr` if you followed the instructions for splits) and is by
 default named `zmk.uf2`. If your board supports USB Flashing Format (UF2), copy
 that file onto the root of the USB mass storage device for your board. The
-controller should flash your built firmware and automatically restart once
-flashing is complete.
+controller should flash your built firmware, unmount the USB storage device and
+automatically restart once flashing is complete.
 
 Alternatively, if your board supports flashing and you're not developing from
 within a Dockerized environment, enable Device Firmware Upgrade (DFU) mode on
 your board and run the following command to flash:
 
-```
+```sh
 west flash
 ```
 

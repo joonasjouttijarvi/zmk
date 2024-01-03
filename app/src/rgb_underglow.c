@@ -24,6 +24,7 @@
 #include <zmk/event_manager.h>
 #include <zmk/events/activity_state_changed.h>
 #include <zmk/events/usb_conn_state_changed.h>
+#include <zmk/workqueue.h>
 
 LOG_MODULE_DECLARE(zmk, CONFIG_ZMK_LOG_LEVEL);
 
@@ -66,7 +67,7 @@ static struct led_rgb pixels[STRIP_NUM_PIXELS];
 static struct rgb_underglow_state state;
 
 #if IS_ENABLED(CONFIG_ZMK_RGB_UNDERGLOW_EXT_POWER)
-static const struct device *ext_power;
+static const struct device *const ext_power = DEVICE_DT_GET(DT_INST(0, zmk_ext_power_generic));
 #endif
 
 static struct zmk_led_hsb hsb_scale_min_max(struct zmk_led_hsb hsb) {
@@ -196,14 +197,14 @@ static void zmk_rgb_underglow_tick(struct k_work *work) {
     }
 }
 
-K_WORK_DEFINE(underglow_work, zmk_rgb_underglow_tick);
+K_WORK_DEFINE(underglow_tick_work, zmk_rgb_underglow_tick);
 
 static void zmk_rgb_underglow_tick_handler(struct k_timer *timer) {
     if (!state.on) {
         return;
     }
 
-    k_work_submit(&underglow_work);
+    k_work_submit_to_queue(zmk_workqueue_lowprio_work_q(), &underglow_tick_work);
 }
 
 K_TIMER_DEFINE(underglow_tick, zmk_rgb_underglow_tick_handler, NULL);
@@ -242,9 +243,9 @@ static int zmk_rgb_underglow_init(const struct device *_arg) {
     led_strip = DEVICE_DT_GET(STRIP_CHOSEN);
 
 #if IS_ENABLED(CONFIG_ZMK_RGB_UNDERGLOW_EXT_POWER)
-    ext_power = device_get_binding("EXT_POWER");
-    if (ext_power == NULL) {
-        LOG_ERR("Unable to retrieve ext_power device: EXT_POWER");
+    if (!device_is_ready(ext_power)) {
+        LOG_ERR("External power device \"%s\" is not ready", ext_power->name);
+        return -ENODEV;
     }
 #endif
 
@@ -322,6 +323,16 @@ int zmk_rgb_underglow_on() {
     return zmk_rgb_underglow_save_state();
 }
 
+static void zmk_rgb_underglow_off_handler(struct k_work *work) {
+    for (int i = 0; i < STRIP_NUM_PIXELS; i++) {
+        pixels[i] = (struct led_rgb){r : 0, g : 0, b : 0};
+    }
+
+    led_strip_update_rgb(led_strip, pixels, STRIP_NUM_PIXELS);
+}
+
+K_WORK_DEFINE(underglow_off_work, zmk_rgb_underglow_off_handler);
+
 int zmk_rgb_underglow_off() {
     if (!led_strip)
         return -ENODEV;
@@ -335,11 +346,7 @@ int zmk_rgb_underglow_off() {
     }
 #endif
 
-    for (int i = 0; i < STRIP_NUM_PIXELS; i++) {
-        pixels[i] = (struct led_rgb){r : 0, g : 0, b : 0};
-    }
-
-    led_strip_update_rgb(led_strip, pixels, STRIP_NUM_PIXELS);
+    k_work_submit_to_queue(zmk_workqueue_lowprio_work_q(), &underglow_off_work);
 
     k_timer_stop(&underglow_tick);
     state.on = false;
