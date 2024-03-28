@@ -49,7 +49,7 @@ You can use the following nodes to tweak the default behaviors:
 
 Creates a custom behavior that triggers one behavior when a key is held or a different one when the key is tapped.
 
-See the [hold-tap behavior](../behaviors/hold-tap.md) documentation for more details and examples.
+See the [hold-tap behavior](../behaviors/hold-tap.mdx) documentation for more details and examples.
 
 ### Devicetree
 
@@ -57,16 +57,18 @@ Definition file: [zmk/app/dts/bindings/behaviors/zmk,behavior-hold-tap.yaml](htt
 
 Applies to: `compatible = "zmk,behavior-hold-tap"`
 
-| Property                     | Type          | Description                                                                                                    | Default            |
-| ---------------------------- | ------------- | -------------------------------------------------------------------------------------------------------------- | ------------------ |
-| `#binding-cells`             | int           | Must be `<2>`                                                                                                  |                    |
-| `bindings`                   | phandle array | A list of two behaviors (without parameters): one for hold and one for tap                                     |                    |
-| `flavor`                     | string        | Adjusts how the behavior chooses between hold and tap                                                          | `"hold-preferred"` |
-| `tapping-term-ms`            | int           | How long in milliseconds the key must be held to trigger a hold                                                |                    |
-| `quick-tap-ms`               | int           | Tap twice within this period (in milliseconds) to trigger a tap, even when held                                | -1 (disabled)      |
-| `require-prior-idle-ms`      | int           | Triggers a tap immediately if any non-modifier key was pressed within `require-prior-idle-ms` of the hold-tap. | -1 (disabled)      |
-| `retro-tap`                  | bool          | Triggers the tap behavior on release if no other key was pressed during a hold                                 | false              |
-| `hold-trigger-key-positions` | array         | If set, pressing the hold-tap and then any key position _not_ in the list triggers a tap.                      |                    |
+| Property                      | Type          | Description                                                                                                    | Default            |
+| ----------------------------- | ------------- | -------------------------------------------------------------------------------------------------------------- | ------------------ |
+| `#binding-cells`              | int           | Must be `<2>`                                                                                                  |                    |
+| `bindings`                    | phandle array | A list of two behaviors (without parameters): one for hold and one for tap                                     |                    |
+| `flavor`                      | string        | Adjusts how the behavior chooses between hold and tap                                                          | `"hold-preferred"` |
+| `tapping-term-ms`             | int           | How long in milliseconds the key must be held to trigger a hold                                                |                    |
+| `quick-tap-ms`                | int           | Tap twice within this period (in milliseconds) to trigger a tap, even when held                                | -1 (disabled)      |
+| `require-prior-idle-ms`       | int           | Triggers a tap immediately if any non-modifier key was pressed within `require-prior-idle-ms` of the hold-tap. | -1 (disabled)      |
+| `retro-tap`                   | bool          | Triggers the tap behavior on release if no other key was pressed during a hold                                 | false              |
+| `hold-while-undecided`        | bool          | Triggers the hold behavior immediately on press and releases before a tap                                      | false              |
+| `hold-while-undecided-linger` | bool          | Continues to hold the hold behavior until after the tap is released                                            | false              |
+| `hold-trigger-key-positions`  | array         | If set, pressing the hold-tap and then any key position _not_ in the list triggers a tap.                      |                    |
 
 This behavior forwards the first parameter it receives to the parameter of the first behavior specified in `bindings`, and second parameter to the parameter of the second behavior.
 
@@ -77,7 +79,7 @@ The `flavor` property may be one of:
 - `"tap-preferred"`
 - `"tap-unless-interrupted"`
 
-See the [hold-tap behavior documentation](../behaviors/hold-tap.md) for an explanation of each flavor.
+See the [hold-tap behavior documentation](../behaviors/hold-tap.mdx) for an explanation of each flavor.
 
 `hold-trigger-key-positions` is an array of zero-based key position indices.
 
@@ -228,6 +230,7 @@ Applies to: `compatible = "zmk,behavior-sticky-key"`
 | `bindings`         | phandle array | A behavior (without parameters) to trigger                               |         |
 | `release-after-ms` | int           | Releases the key after this many milliseconds if no other key is pressed | 1000    |
 | `quick-release`    | bool          | Release the sticky key on the next key press instead of release          | false   |
+| `lazy`             | bool          | Wait until the next key press to activate the sticky key behavior        | false   |
 | `ignore-modifiers` | bool          | If enabled, pressing a modifier key does not cancel the sticky key       | true    |
 
 This behavior forwards the one parameter it receives to the parameter of the behavior specified in `bindings`.
@@ -243,7 +246,7 @@ You can use the following nodes to tweak the default behaviors:
 
 Creates a custom behavior that triggers a different behavior corresponding to the number of times the key is tapped.
 
-See the [tap dance behavior](../behaviors/tap-dance.md) documentation for more details and examples.
+See the [tap dance behavior](../behaviors/tap-dance.mdx) documentation for more details and examples.
 
 ### Devicetree
 

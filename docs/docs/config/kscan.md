@@ -25,12 +25,12 @@ If the debounce press/release values are set to any value other than `-1`, they 
 
 ### Devicetree
 
-Applies to: [`/chosen` node](https://docs.zephyrproject.org/latest/guides/dts/intro.html#aliases-and-chosen-nodes)
+Applies to: [`/chosen` node](https://docs.zephyrproject.org/3.5.0/build/dts/intro-syntax-structure.html#aliases-and-chosen-nodes)
 
 | Property               | Type | Description                                                   |
 | ---------------------- | ---- | ------------------------------------------------------------- |
 | `zmk,kscan`            | path | The node for the keyboard scan driver to use                  |
-| `zmk,matrix_transform` | path | The node for the [matrix transform](#matrix-transform) to use |
+| `zmk,matrix-transform` | path | The node for the [matrix transform](#matrix-transform) to use |
 
 ## Demux Driver
 
@@ -73,22 +73,24 @@ Definition file: [zmk/app/module/dts/bindings/kscan/zmk,kscan-gpio-direct.yaml](
 
 | Property                  | Type       | Description                                                                                                 | Default |
 | ------------------------- | ---------- | ----------------------------------------------------------------------------------------------------------- | ------- |
-| `input-gpios`             | GPIO array | Input GPIOs (one per key)                                                                                   |         |
+| `input-gpios`             | GPIO array | Input GPIOs (one per key). Can be either direct GPIO pin or `gpio-key` references.                          |         |
 | `debounce-press-ms`       | int        | Debounce time for key press in milliseconds. Use 0 for eager debouncing.                                    | 5       |
 | `debounce-release-ms`     | int        | Debounce time for key release in milliseconds.                                                              | 5       |
 | `debounce-scan-period-ms` | int        | Time between reads in milliseconds when any key is pressed.                                                 | 1       |
 | `poll-period-ms`          | int        | Time between reads in milliseconds when no key is pressed and `CONFIG_ZMK_KSCAN_DIRECT_POLLING` is enabled. | 10      |
 | `toggle-mode`             | bool       | Use toggle switch mode.                                                                                     | n       |
+| `wakeup-source`           | bool       | Mark this kscan instance as able to wake the keyboard from deep sleep                                       | n       |
 
 By default, a switch will drain current through the internal pull up/down resistor whenever it is pressed. This is not ideal for a toggle switch, where the switch may be left in the "pressed" state for a long time. Enabling `toggle-mode` will make the driver flip between pull up and down as the switch is toggled to optimize for power.
 
 `toggle-mode` applies to all switches handled by the instance of the driver. To use a toggle switch with other, non-toggle, direct GPIO switches, create two instances of the direct GPIO driver, one with `toggle-mode` and the other without. Then, use a [composite driver](#composite-driver) to combine them.
 
-Assuming the switches connect each GPIO pin to the ground, the [GPIO flags](https://docs.zephyrproject.org/3.2.0/hardware/peripherals/gpio.html#api-reference) for the elements in `input-gpios` should be `(GPIO_ACTIVE_LOW | GPIO_PULL_UP)`:
+Assuming the switches connect each GPIO pin to the ground, the [GPIO flags](https://docs.zephyrproject.org/3.5.0/hardware/peripherals/gpio.html#api-reference) for the elements in `input-gpios` should be `(GPIO_ACTIVE_LOW | GPIO_PULL_UP)`:
 
 ```dts
     kscan0: kscan {
         compatible = "zmk,kscan-gpio-direct";
+        wakeup-source;
         input-gpios
             = <&pro_micro 4 (GPIO_ACTIVE_LOW | GPIO_PULL_UP)>
             , <&pro_micro 5 (GPIO_ACTIVE_LOW | GPIO_PULL_UP)>
@@ -123,6 +125,7 @@ Definition file: [zmk/app/module/dts/bindings/kscan/zmk,kscan-gpio-matrix.yaml](
 | `debounce-scan-period-ms` | int        | Time between reads in milliseconds when any key is pressed.                                                 | 1           |
 | `diode-direction`         | string     | The direction of the matrix diodes                                                                          | `"row2col"` |
 | `poll-period-ms`          | int        | Time between reads in milliseconds when no key is pressed and `CONFIG_ZMK_KSCAN_MATRIX_POLLING` is enabled. | 10          |
+| `wakeup-source`           | bool       | Mark this kscan instance as able to wake the keyboard from deep sleep                                       | n           |
 
 The `diode-direction` property must be one of:
 
@@ -131,12 +134,13 @@ The `diode-direction` property must be one of:
 | `"row2col"` | Diodes point from rows to columns (cathodes are connected to columns) |
 | `"col2row"` | Diodes point from columns to rows (cathodes are connected to rows)    |
 
-Given the `diode-direction`, the [GPIO flags](https://docs.zephyrproject.org/3.2.0/hardware/peripherals/gpio.html#api-reference) for the elements in `row-` and `col-gpios` should be set appropriately.
+Given the `diode-direction`, the [GPIO flags](https://docs.zephyrproject.org/3.5.0/hardware/peripherals/gpio.html#api-reference) for the elements in `row-` and `col-gpios` should be set appropriately.
 The output pins (e.g. columns for `col2row`) should have the flag `GPIO_ACTIVE_HIGH`, and input pins (e.g. rows for `col2row`) should have the flags `(GPIO_ACTIVE_HIGH | GPIO_PULL_DOWN)`:
 
 ```dts
     kscan0: kscan {
         compatible = "zmk,kscan-gpio-matrix";
+        wakeup-source;
         diode-direction = "col2row";
         col-gpios
             = <&pro_micro 4 GPIO_ACTIVE_HIGH>
@@ -177,6 +181,7 @@ Definition file: [zmk/app/module/dts/bindings/kscan/zmk,kscan-gpio-charlieplex.y
 | `debounce-release-ms`     | int        | Debounce time for key release in milliseconds.                                              | 5       |
 | `debounce-scan-period-ms` | int        | Time between reads in milliseconds when any key is pressed.                                 | 1       |
 | `poll-period-ms`          | int        | Time between reads in milliseconds when no key is pressed and `interrupt-gpois` is not set. | 10      |
+| `wakeup-source`           | bool       | Mark this kscan instance as able to wake the keyboard from deep sleep                       | n       |
 
 Define the transform with a [matrix transform](#matrix-transform). The row is always the driven pin, and the column always the receiving pin (input to the controller).
 For example, in `RC(5,0)` power flows from the 6th pin in `gpios` to the 1st pin in `gpios`.
@@ -320,7 +325,7 @@ Transforms should be used any time the physical layout of a keyboard's keys does
 
 Transforms can also be used for keyboards with multiple layouts. You can define multiple matrix transform nodes, one for each layout, and users can select which one they want from the `/chosen` node in their keymaps.
 
-See the [new shield guide](../development/new-shield.md#optional-matrix-transform) for more documentation on how to define a matrix transform.
+See the [new shield guide](../development/new-shield.mdx#optional-matrix-transform) for more documentation on how to define a matrix transform.
 
 ### Devicetree
 
@@ -347,7 +352,7 @@ Any keyboard which is not a grid of 1 unit keys will likely have some unused pos
 / {
     chosen {
         zmk,kscan = &kscan0;
-        zmk,matrix_transform = &default_transform;
+        zmk,matrix-transform = &default_transform;
     };
 
     kscan0: kscan {
@@ -407,7 +412,7 @@ Consider a keyboard with a [duplex matrix](https://wiki.ai03.com/books/pcb-desig
 / {
     chosen {
         zmk,kscan = &kscan0;
-        zmk,matrix_transform = &default_transform;
+        zmk,matrix-transform = &default_transform;
     };
 
     kscan0: kscan {
@@ -446,11 +451,12 @@ Note that the entire addressable space does not need to be mapped.
 / {
     chosen {
         zmk,kscan = &kscan0;
-        zmk,matrix_transform = &default_transform;
+        zmk,matrix-transform = &default_transform;
     };
 
     kscan0: kscan {
         compatible = "zmk,kscan-gpio-charlieplex";
+        wakeup-source;
 
         interrupt-gpios = <&pro_micro 21 (GPIO_ACTIVE_HIGH | GPIO_PULL_DOWN) >;
         gpios
